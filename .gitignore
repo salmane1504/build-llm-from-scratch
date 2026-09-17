@@ -13,3 +13,4 @@ wheels/
 checkpoints/
 *.pth
 *.pdf
+gpt2/
