@@ -4,3 +4,5 @@ matplotlib >= 3.7.1
 requests >= 2.31.0
 numpy >= 1.26
 jupyterlab >= 4.0
+tensorflow >= 2.15
+tqdm >= 4.66

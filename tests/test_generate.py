@@ -22,6 +22,6 @@ def test_generate_can_use_random_model(monkeypatch):
 
     monkeypatch.setattr("generate.generate_text_simple", fake_generate_text_simple)
 
-    result = generate("hello", model_path="missing.pth", use_trained=False, max_new_tokens=3)
+    result = generate("hello", source="random", model_path="missing.pth", max_new_tokens=3)
 
     assert result == "prompt"

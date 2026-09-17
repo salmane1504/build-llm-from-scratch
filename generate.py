@@ -1,4 +1,11 @@
-"""Inference pipeline: load a trained GPT checkpoint and generate text from a prompt."""
+"""Inference pipeline: generate text from a prompt using a GPT model.
+
+The model weights can come from three sources:
+
+* ``checkpoint`` - a locally trained checkpoint (default),
+* ``random``     - a freshly initialized (untrained) ``GPTModel``,
+* ``openai``     - OpenAI's pretrained GPT-2 weights, downloaded on demand.
+"""
 
 import argparse
 import os
@@ -8,36 +15,58 @@ import torch
 
 from llm_architecture import (
     GPT_CONFIG_124M,
+    GPT2_MODEL_CONFIGS,
     GPTModel,
     generate_text_simple,
     load_model,
+    load_pretrained_gpt,
     text_to_token_ids,
     token_ids_to_text,
 )
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(PROJECT_ROOT, "checkpoints", "model.pth")
+GPT2_DIR = os.path.join(PROJECT_ROOT, "gpt2")
 
 
 def generate(
     prompt,
+    source="checkpoint",
     model_path=MODEL_PATH,
     config=GPT_CONFIG_124M,
+    gpt2_size="124M",
+    models_dir=GPT2_DIR,
     max_new_tokens=50,
-    use_trained=True,
 ):
-    """Generate text from ``prompt`` using either a saved checkpoint or a random model."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    """Generate text continued from ``prompt``.
 
-    if use_trained:
+    ``source`` selects the weights: ``"checkpoint"`` loads a trained model,
+    ``"random"`` uses an untrained ``GPTModel``, and ``"openai"`` downloads and
+    loads OpenAI's pretrained GPT-2 ``gpt2_size`` weights.
+    """
+    device = torch.device(
+        "cuda" if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available()
+        else "cpu"
+    )
+
+    if source == "checkpoint":
         if not os.path.exists(model_path):
             raise FileNotFoundError(
-                f"No checkpoint found at {model_path}. Run `python train.py` first "
-                "or pass --no-use-trained to initialize a random model."
+                f"No checkpoint found at {model_path}. Run `python train.py` first, "
+                "or pass --source random / --source openai."
             )
         model = load_model(config, model_path, device=device)
-    else:
+    elif source == "random":
         model = GPTModel(config).to(device)
+    elif source == "openai":
+        model, config = load_pretrained_gpt(
+            gpt2_size, models_dir=models_dir, device=device
+        )
+    else:
+        raise ValueError(
+            f"Unknown source {source!r}. Choose 'checkpoint', 'random', or 'openai'."
+        )
 
     model.eval()
 
@@ -58,19 +87,34 @@ def main():
     parser.add_argument("--max-new-tokens", type=int, default=50, help="Tokens to generate.")
     parser.add_argument("--model-path", default=MODEL_PATH, help="Path to the checkpoint.")
     parser.add_argument(
-        "--use-trained",
-        dest="use_trained",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Load the saved checkpoint. Use --no-use-trained for a random GPTModel.",
+        "--source",
+        choices=["checkpoint", "random", "openai"],
+        default="checkpoint",
+        help=(
+            "Weights to use: 'checkpoint' (trained), 'random' (untrained), "
+            "or 'openai' (pretrained GPT-2)."
+        ),
+    )
+    parser.add_argument(
+        "--gpt2-size",
+        choices=list(GPT2_MODEL_CONFIGS),
+        default="124M",
+        help="Pretrained GPT-2 size to use when --source openai.",
+    )
+    parser.add_argument(
+        "--models-dir",
+        default=GPT2_DIR,
+        help="Directory to cache downloaded OpenAI GPT-2 weights.",
     )
     args = parser.parse_args()
 
     output = generate(
         args.prompt,
+        source=args.source,
         model_path=args.model_path,
+        gpt2_size=args.gpt2_size,
+        models_dir=args.models_dir,
         max_new_tokens=args.max_new_tokens,
-        use_trained=args.use_trained,
     )
     print(output)
 
